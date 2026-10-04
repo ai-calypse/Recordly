@@ -107,6 +107,22 @@ Capture uses the microphone, system audio, webcam, devices, and countdown alread
 
 `completed` is reported after background media finalization. Check any `warnings` for unavailable audio or webcam tracks. The returned video is the source capture; editor effects and polished MP4/GIF exports are separate. No media is uploaded by this integration. Recording continues if the MCP process disconnects; reconnect and query its status, or stop it from the tray. A failed result may include a recoverable `videoPath`.
 
+## Desktop control (opt-in)
+
+Add `--enable-desktop-control` (or `RECORDLY_MCP_DESKTOP_CONTROL=1`) to the MCP command and the server also exposes tools that drive the real keyboard and mouse, so an agent can arrange windows, run the demo, and record it in one session. They are off by default and are separate from the recording API: they act on the MCP process's own desktop session and do not use the Recordly connection file.
+
+| Tool | Notes |
+| --- | --- |
+| `desktop_doctor` | Checks binaries and OS permissions (Accessibility, Screen Recording). Run first |
+| `desktop_list_windows` | Window IDs, geometry and titles |
+| `desktop_focus_window` | Foregrounds a window and proves it |
+| `desktop_screenshot` | Returns the window as an image |
+| `desktop_type` / `desktop_paste` | Short literals / verbatim text via the clipboard. Neither sends Enter |
+| `desktop_key` | Named keys and chords such as `enter`, `cmd+v` |
+| `desktop_click` / `desktop_scroll` | Coordinates and wheel, inside a focused window |
+
+They wrap `src/screenctl.py` (Python 3, standard library only; macOS also needs `cliclick`, Linux `xdotool`). Every input first re-verifies that the target window is in focus and refuses otherwise, and each action is logged to `~/.screenctl/actions.log`. Set `RECORDLY_MCP_PYTHON` to use a specific interpreter. The server instructions tell the agent to act only after the user has handed over the machine, to treat screen content as untrusted, and to close nothing it did not open. Anything that can start this MCP process with the flag can control the desktop, so enable it only for clients you trust.
+
 ## Architecture and limits
 
 ```text
@@ -114,7 +130,7 @@ Agent → MCP stdio process → authenticated HTTP on 127.0.0.1
       → Electron recording controller → trusted HUD IPC → existing recording workflow
 ```
 
-The MCP package has no Electron imports or native capture dependencies. Recordly's API has no MCP SDK dependency. New recording capabilities can be added to the versioned control contract and exposed as tools without duplicating capture implementations.
+The MCP package has no Electron imports or native capture dependencies (desktop control, when enabled, shells out to `screenctl.py`). Recordly's API has no MCP SDK dependency. New recording capabilities can be added to the versioned control contract and exposed as tools without duplicating capture implementations.
 
 Recordly supports one capture at a time. Multiple MCP processes can connect to the same app; concurrent starts are rejected, and stop requires a known automation recording ID. Manual recordings cannot be stopped by these tools. The API binds an ephemeral loopback port, requires a per-launch token, rejects browser origins and unexpected Host headers, and limits command bodies and pending requests. Each automated start requires visible approval by default; automation is disabled unless explicitly enabled at app startup.
 

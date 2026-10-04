@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { DESKTOP_INSTRUCTIONS, desktopTools } from "./desktop.mjs";
 
 const recordingId = z.string().regex(/^[a-zA-Z0-9_-]{8,128}$/);
 const exportId = z.string().regex(/^[a-zA-Z0-9_-]{8,128}$/);
@@ -157,9 +158,12 @@ async function pollUntil(method, { timeoutSeconds, ...params }, targets, call, s
 	}
 }
 
-export function createMcpServer(callRecordly) {
-	const server = new McpServer({ name: "recordly", version: "0.1.0" });
-	for (const tool of tools) {
+export function createMcpServer(callRecordly, { desktopControl = false } = {}) {
+	const server = new McpServer(
+		{ name: "recordly", version: "0.1.0" },
+		desktopControl ? { instructions: DESKTOP_INSTRUCTIONS } : undefined,
+	);
+	for (const tool of desktopControl ? [...tools, ...desktopTools] : tools) {
 		server.registerTool(
 			tool.name,
 			{
@@ -169,7 +173,7 @@ export function createMcpServer(callRecordly) {
 					readOnlyHint: tool.readOnly,
 					destructiveHint: tool.destructive ?? false,
 					idempotentHint: tool.readOnly,
-					openWorldHint: false,
+					openWorldHint: tool.openWorld ?? false,
 				},
 			},
 			async (params, context) => {
@@ -177,6 +181,7 @@ export function createMcpServer(callRecordly) {
 					const result = tool.run
 						? await tool.run(params, callRecordly, context.signal)
 						: await callRecordly(tool.name, params, context.signal);
+					if (result?.mcpContent) return { content: result.mcpContent };
 					return {
 						content: [{ type: "text", text: JSON.stringify(result) }],
 						structuredContent: result,
