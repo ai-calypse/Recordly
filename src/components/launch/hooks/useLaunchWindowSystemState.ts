@@ -6,6 +6,9 @@ export function useLaunchWindowSystemState(
 	const [hudOverlayMousePassthroughSupported, setHudOverlayMousePassthroughSupported] = useState<
 		boolean | null
 	>(null);
+	const [hudOverlayResizeAnchor, setHudOverlayResizeAnchor] = useState<"bottom" | "center">(
+		"bottom",
+	);
 	const [platform, setPlatform] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -35,6 +38,7 @@ export function useLaunchWindowSystemState(
 				const result = await window.electronAPI.getHudOverlayMousePassthroughSupported();
 				if (!cancelled && result.success) {
 					setHudOverlayMousePassthroughSupported(result.supported);
+					setHudOverlayResizeAnchor(result.resizeAnchor ?? "bottom");
 				}
 			} catch (error) {
 				console.error("Failed to load HUD overlay mouse passthrough support:", error);
@@ -50,5 +54,5 @@ export function useLaunchWindowSystemState(
 		void preparePermissions({ startup: true });
 	}, [preparePermissions]);
 
-	return { hudOverlayMousePassthroughSupported, platform };
+	return { hudOverlayMousePassthroughSupported, hudOverlayResizeAnchor, platform };
 }

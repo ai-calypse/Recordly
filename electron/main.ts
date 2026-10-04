@@ -19,6 +19,7 @@ import {
 } from "electron";
 import { RECORDINGS_DIR } from "./appPaths";
 import { createAuthCallbackController } from "./authCallback";
+import { startRecordingAutomation } from "./automation";
 import { showCursor } from "./cursorHider";
 import { getGpuSwitches } from "./gpuSwitches";
 import {
@@ -1061,6 +1062,7 @@ app.whenReady().then(async () => {
 		return;
 	}
 
+	await startRecordingAutomation();
 	createWindow();
 	setupAutoUpdates(getUpdateDialogWindow, sendUpdateToastToWindows);
 	if (IS_DEV && process.env.RECORDLY_DEV_PREVIEW_UPDATE === "1") {

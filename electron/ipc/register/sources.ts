@@ -20,7 +20,11 @@ import { selectedSource, setSelectedSource } from "../state";
 import type { SelectedSource, WindowBounds } from "../types";
 import { getScreen, parseWindowId } from "../utils";
 import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
-import { getScreenSourceIdForDisplay } from "./sourceMapping";
+import {
+	getScreenSourceIdForDisplay,
+	isLikelyLinuxWaylandSession,
+	LINUX_PORTAL_SCREEN_SOURCE_ID,
+} from "./sourceMapping";
 
 const execFileAsync = promisify(execFile);
 const SOURCE_LIST_CACHE_TTL_MS = 1200;
@@ -127,6 +131,22 @@ export function registerSourceHandlers({
 }) {
 	const recordingNavigation = createRecordingEditorNavigation(createEditorWindow);
 	ipcMain.handle("get-sources", async (_, opts) => {
+		if (
+			opts?.allowPortalPrompt === false &&
+			process.platform === "linux" &&
+			isLikelyLinuxWaylandSession(process.env)
+		) {
+			return [
+				{
+					id: LINUX_PORTAL_SCREEN_SOURCE_ID,
+					name: "Choose screen or window in system picker",
+					display_id: "",
+					thumbnail: null,
+					appIcon: null,
+					sourceType: "screen",
+				},
+			];
+		}
 		const cacheKey = JSON.stringify({
 			types: opts?.types,
 			thumbnailSize: opts?.thumbnailSize,
