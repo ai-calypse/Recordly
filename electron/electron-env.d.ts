@@ -232,6 +232,8 @@ interface Window {
 		reportAutomationRecording: (
 			update: import("./automation/protocol").RecordingUpdate,
 		) => Promise<void>;
+		claimAutomationExport: () => Promise<import("./automation/protocol").ExportClaim | null>;
+		reportAutomationExport: (update: import("./automation/protocol").ExportUpdate) => void;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlaySetMenuOpen: (open: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;

@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
 	AutomationApproval,
+	ExportClaim,
+	ExportUpdate,
 	RecordingUpdate,
 	RendererAutomationCommand,
 	RendererAutomationResult,
@@ -208,6 +210,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.invoke("automation:approve", id, details),
 	reportAutomationRecording: (update: RecordingUpdate): Promise<void> =>
 		ipcRenderer.invoke("automation:update", update),
+	// Resolves null when automation is off (no handler registered) or this window has no export job.
+	claimAutomationExport: (): Promise<ExportClaim | null> =>
+		ipcRenderer.invoke("automation:export-claim").catch(() => null),
+	reportAutomationExport: (update: ExportUpdate) =>
+		ipcRenderer.send("automation:export-update", update),
 	hudOverlaySetIgnoreMouse: (ignore: boolean) => {
 		ipcRenderer.send("hud-overlay-set-ignore-mouse", ignore);
 	},

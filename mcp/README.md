@@ -73,6 +73,15 @@ Use an absolute Node executable path if the client does not inherit your shell's
 | `start_recording` | `requestId`, `sourceId` | A recording ID and `starting` phase |
 | `get_recording_status` | Optional `recordingId` | The specified or most recent automation recording, or `idle` |
 | `stop_recording` | `recordingId` | `finalizing`, or the existing terminal result on retries |
+| `pause_recording` / `resume_recording` | `recordingId` | Pause or resume; confirm via `paused` in `get_recording_status` |
+| `cancel_recording` | `recordingId` | Discards the recording; ends as `cancelled` |
+| `wait_for_recording` | Optional `recordingId`, `until` (`recording` or `done`), `timeoutSeconds` (max 55) | Blocks instead of polling; returns status plus `timedOut` |
+| `list_recordings` | `{}` | Newest 50 media files in the recordings folder |
+| `open_in_editor` | `videoPath`, optional `webcamPath` | Opens a new editor window; leaves open editors alone |
+| `export_recording` | `videoPath`, `format` (`mp4`/`gif`), optional `quality` | An `exportId`; renders with the editor's current look into the recordings folder |
+| `get_export_status` / `wait_for_export` | Optional `exportId` | `exporting` with `progress`, then `completed` with `outputPath` or `failed` |
+
+`open_in_editor` and `export_recording` only accept media files inside Recordly's recordings folder (symlinks resolved), and exports are written there under a generated name, so an agent cannot read or overwrite other paths. One export runs at a time.
 
 An example agent workflow:
 

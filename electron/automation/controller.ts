@@ -1,5 +1,5 @@
 import {
-	type AutomationCommand,
+	type RecordingCommand,
 	type RendererCommand,
 	AutomationError,
 	type AutomationRecording,
@@ -13,9 +13,7 @@ export class RecordingController {
 
 	constructor(private readonly execute: (command: RendererCommand) => Promise<unknown>) {}
 
-	async call(
-		command: Exclude<AutomationCommand, { method: "list_recordings" }>,
-	): Promise<unknown> {
+	async call(command: RecordingCommand): Promise<unknown> {
 		if (command.method === "list_sources") return this.execute(command);
 		if (command.method === "get_recording_status") {
 			const id = command.params.recordingId ?? this.latestId;

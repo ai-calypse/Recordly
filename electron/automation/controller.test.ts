@@ -89,3 +89,26 @@ it("only pauses, resumes or cancels an active recording", async () => {
 		params: { recordingId: "request-1" },
 	});
 });
+
+it("parses editor and export commands strictly", () => {
+	expect(
+		parseAutomationCommand({
+			method: "export_recording",
+			params: { videoPath: "/a/b.mp4", format: "gif" },
+		}),
+	).toEqual({ method: "export_recording", params: { videoPath: "/a/b.mp4", format: "gif" } });
+	for (const params of [
+		{ videoPath: "/a/b.mp4", format: "avi" },
+		{ videoPath: "/a/b.mp4", format: "mp4", quality: "ultra" },
+		{ format: "mp4" },
+		{ videoPath: "/a/b.mp4", format: "mp4", outputPath: "/etc/x" },
+	]) {
+		expect(() => parseAutomationCommand({ method: "export_recording", params })).toThrow();
+	}
+	expect(
+		parseAutomationCommand({ method: "open_in_editor", params: { videoPath: "/a/b.mp4" } }),
+	).toEqual({
+		method: "open_in_editor",
+		params: { videoPath: "/a/b.mp4" },
+	});
+});

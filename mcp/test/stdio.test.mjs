@@ -77,13 +77,17 @@ test("a separate MCP process discovers tools and controls Recordly over authenti
 	const { tools } = await client.listTools();
 	assert.deepEqual(tools.map((tool) => tool.name).sort(), [
 		"cancel_recording",
+		"export_recording",
+		"get_export_status",
 		"get_recording_status",
 		"list_recordings",
 		"list_sources",
+		"open_in_editor",
 		"pause_recording",
 		"resume_recording",
 		"start_recording",
 		"stop_recording",
+		"wait_for_export",
 		"wait_for_recording",
 	]);
 	const list = await client.callTool({ name: "list_sources", arguments: {} });

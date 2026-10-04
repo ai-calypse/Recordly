@@ -2,6 +2,14 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 const recordingId = z.string().regex(/^[a-zA-Z0-9_-]{8,128}$/);
+const exportId = z.string().regex(/^[a-zA-Z0-9_-]{8,128}$/);
+const mediaPath = z
+	.string()
+	.min(1)
+	.max(4096)
+	.describe(
+		"Absolute path of a file in Recordly's recordings folder, from list_recordings or a completed recording's videoPath.",
+	);
 const tools = [
 	{
 		name: "list_sources",
@@ -80,26 +88,69 @@ const tools = [
 			.object({
 				recordingId: recordingId.optional(),
 				until: z.enum(["recording", "done"]).default("recording"),
-				timeoutSeconds: z.number().int().min(1).max(180).default(60),
+				timeoutSeconds: z.number().int().min(1).max(55).default(30),
 			})
 			.strict(),
 		readOnly: true,
 		run: waitForRecording,
 	},
+	{
+		name: "open_in_editor",
+		description:
+			"Open a recording in a new Recordly editor window so the user can polish it. Does not touch editors already open. The file must be in Recordly's recordings folder.",
+		inputSchema: z.object({ videoPath: mediaPath, webcamPath: mediaPath.optional() }).strict(),
+		readOnly: false,
+	},
+	{
+		name: "export_recording",
+		description:
+			"Export a recording to a polished MP4 or GIF with the user's current editor look (wallpaper, zoom, cursor effects), saved in the recordings folder. Runs in a background editor window and returns an exportId immediately; call wait_for_export. One export at a time. quality applies to mp4 only (medium, good, high, source; default is the user's editor setting). Unlike the raw capture, this renders effects, so it can take a while.",
+		inputSchema: z
+			.object({
+				videoPath: mediaPath,
+				webcamPath: mediaPath.optional(),
+				format: z.enum(["mp4", "gif"]),
+				quality: z.enum(["medium", "good", "high", "source"]).optional(),
+			})
+			.strict(),
+		readOnly: false,
+	},
+	{
+		name: "get_export_status",
+		description:
+			"Read an export's phase (starting, exporting, completed, failed), progress 0-100, and on completion outputPath. Without an ID returns the latest export, or idle.",
+		inputSchema: z.object({ exportId: exportId.optional() }).strict(),
+		readOnly: true,
+	},
+	{
+		name: "wait_for_export",
+		description:
+			"Block until an export completes or fails instead of polling get_export_status. Returns the status plus timedOut; on timeout call it again.",
+		inputSchema: z
+			.object({
+				exportId: exportId.optional(),
+				timeoutSeconds: z.number().int().min(1).max(55).default(30),
+			})
+			.strict(),
+		readOnly: true,
+		run: (params, call, signal) =>
+			pollUntil("get_export_status", params, ["completed", "failed"], call, signal),
+	},
 ];
 
 const TERMINAL = ["completed", "failed", "cancelled"];
 
-async function waitForRecording({ recordingId, until, timeoutSeconds }, call, signal) {
+function waitForRecording({ until, ...params }, call, signal) {
 	const targets = until === "done" ? TERMINAL : ["recording", ...TERMINAL];
+	return pollUntil("get_recording_status", params, targets, call, signal);
+}
+
+/** Polls `method` until its phase is in `targets` or timeoutSeconds passes. */
+async function pollUntil(method, { timeoutSeconds, ...params }, targets, call, signal) {
 	const deadline = Date.now() + timeoutSeconds * 1000;
 	for (;;) {
 		signal?.throwIfAborted();
-		const status = await call(
-			"get_recording_status",
-			recordingId ? { recordingId } : {},
-			signal,
-		);
+		const status = await call(method, params, signal);
 		const reached = targets.includes(status.phase);
 		if (reached || Date.now() >= deadline) return { ...status, timedOut: !reached };
 		await new Promise((resolve) => setTimeout(resolve, 500));

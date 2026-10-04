@@ -8,13 +8,58 @@ export type AutomationCommand =
 	| { method: "pause_recording"; params: { recordingId: string } }
 	| { method: "resume_recording"; params: { recordingId: string } }
 	| { method: "cancel_recording"; params: { recordingId: string } }
-	| { method: "list_recordings"; params: Record<string, never> };
+	| { method: "list_recordings"; params: Record<string, never> }
+	| { method: "open_in_editor"; params: { videoPath: string; webcamPath?: string } }
+	| {
+			method: "export_recording";
+			params: {
+				videoPath: string;
+				webcamPath?: string;
+				format: ExportFormat;
+				quality?: ExportQuality;
+			};
+	  }
+	| { method: "get_export_status"; params: { exportId?: string } };
 
-/** Commands the recording window executes; the rest are answered by the main process. */
-export type RendererCommand = Exclude<
+export type ExportFormat = "mp4" | "gif";
+export type ExportQuality = "medium" | "good" | "high" | "source";
+export const EXPORT_QUALITIES: readonly ExportQuality[] = ["medium", "good", "high", "source"];
+
+/** Answered by the main process without the recording window. */
+export type MainCommand = Extract<
 	AutomationCommand,
-	{ method: "get_recording_status" | "list_recordings" }
+	{ method: "list_recordings" | "open_in_editor" | "export_recording" | "get_export_status" }
 >;
+export type RecordingCommand = Exclude<AutomationCommand, MainCommand>;
+
+/** Commands the recording window executes. */
+export type RendererCommand = Exclude<RecordingCommand, { method: "get_recording_status" }>;
+
+export type ExportPhase = "starting" | "exporting" | "completed" | "failed";
+
+export interface ExportJob {
+	exportId: string;
+	videoPath: string;
+	format: ExportFormat;
+	phase: ExportPhase;
+	createdAt: string;
+	updatedAt: string;
+	/** 0-100 while exporting. */
+	progress?: number;
+	outputPath?: string;
+	error?: string;
+}
+
+export type ExportUpdate = Pick<ExportJob, "exportId" | "phase"> &
+	Partial<Pick<ExportJob, "progress" | "outputPath" | "error">>;
+
+/** What the editor window needs to run a claimed export. */
+export interface ExportClaim {
+	exportId: string;
+	format: ExportFormat;
+	quality?: ExportQuality;
+	outputPath: string;
+}
 
 export type RecordingPhase =
 	| "starting"
@@ -99,6 +144,9 @@ export function parseAutomationCommand(value: unknown): AutomationCommand {
 		resume_recording: ["recordingId"],
 		cancel_recording: ["recordingId"],
 		list_recordings: [],
+		open_in_editor: ["videoPath", "webcamPath"],
+		export_recording: ["videoPath", "webcamPath", "format", "quality"],
+		get_export_status: ["exportId"],
 	};
 	if (!Object.keys(allowed).includes(value.method)) {
 		throw new AutomationError("UNKNOWN_METHOD", "Unknown automation method.");
@@ -117,6 +165,42 @@ export function parseAutomationCommand(value: unknown): AutomationCommand {
 		case "list_sources":
 		case "list_recordings":
 			return { method: value.method, params: {} };
+		case "open_in_editor":
+		case "export_recording": {
+			const path = (key: string, required: boolean) => {
+				const result = params[key];
+				if (result === undefined && !required) return undefined;
+				if (typeof result !== "string" || result.length === 0 || result.length > 4096) {
+					throw new AutomationError("INVALID_PARAMS", `${key} must be a file path.`);
+				}
+				return result;
+			};
+			const files = {
+				videoPath: path("videoPath", true) as string,
+				...(path("webcamPath", false) ? { webcamPath: path("webcamPath", false) } : {}),
+			};
+			if (value.method === "open_in_editor") return { method: value.method, params: files };
+			if (params.format !== "mp4" && params.format !== "gif") {
+				throw new AutomationError("INVALID_PARAMS", "format must be mp4 or gif.");
+			}
+			const quality = params.quality;
+			if (quality !== undefined && !EXPORT_QUALITIES.includes(quality as ExportQuality)) {
+				throw new AutomationError("INVALID_PARAMS", "Unknown export quality.");
+			}
+			return {
+				method: value.method,
+				params: {
+					...files,
+					format: params.format,
+					...(quality ? { quality: quality as ExportQuality } : {}),
+				},
+			};
+		}
+		case "get_export_status":
+			return {
+				method: value.method,
+				params: params.exportId === undefined ? {} : { exportId: id("exportId") },
+			};
 		case "get_recording_status":
 			return {
 				method: value.method,
