@@ -76,10 +76,15 @@ test("a separate MCP process discovers tools and controls Recordly over authenti
 	await client.connect(transport);
 	const { tools } = await client.listTools();
 	assert.deepEqual(tools.map((tool) => tool.name).sort(), [
+		"cancel_recording",
 		"get_recording_status",
+		"list_recordings",
 		"list_sources",
+		"pause_recording",
+		"resume_recording",
 		"start_recording",
 		"stop_recording",
+		"wait_for_recording",
 	]);
 	const list = await client.callTool({ name: "list_sources", arguments: {} });
 	assert.equal(list.structuredContent.sources[0].id, "screen:1:0");
@@ -98,13 +103,19 @@ test("a separate MCP process discovers tools and controls Recordly over authenti
 		arguments: { recordingId: "recording-test" },
 	});
 	assert.equal(status.structuredContent.videoPath, "/tmp/demo.webm");
-	assert.equal(calls.length, 4);
+	const waited = await client.callTool({
+		name: "wait_for_recording",
+		arguments: { recordingId: "recording-test", until: "done", timeoutSeconds: 1 },
+	});
+	assert.equal(waited.structuredContent.phase, "completed");
+	assert.equal(waited.structuredContent.timedOut, false);
+	assert.equal(calls.length, 5);
 	const invalid = await client.callTool({
 		name: "start_recording",
 		arguments: { sourceId: "screen:1:0" },
 	});
 	assert.equal(invalid.isError, true);
-	assert.equal(calls.length, 4);
+	assert.equal(calls.length, 5);
 	await rm(connectionFile);
 	const disconnected = await client.callTool({ name: "list_sources", arguments: {} });
 	assert.equal(disconnected.isError, true);

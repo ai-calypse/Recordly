@@ -71,3 +71,21 @@ describe("recording automation lifecycle", () => {
 		expect(parseAutomationCommand(start)).toEqual(start);
 	});
 });
+
+it("only pauses, resumes or cancels an active recording", async () => {
+	const execute = vi.fn(async () => ({}));
+	const controller = new RecordingController(execute);
+	await controller.call({
+		method: "start_recording",
+		params: { requestId: "request-1", sourceId: "screen:1:0" },
+	});
+	await expect(
+		controller.call({ method: "pause_recording", params: { recordingId: "request-1" } }),
+	).rejects.toMatchObject({ code: "NOT_READY" });
+	controller.update({ recordingId: "request-1", phase: "recording" });
+	await controller.call({ method: "pause_recording", params: { recordingId: "request-1" } });
+	expect(execute).toHaveBeenLastCalledWith({
+		method: "pause_recording",
+		params: { recordingId: "request-1" },
+	});
+});

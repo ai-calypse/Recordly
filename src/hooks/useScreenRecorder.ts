@@ -2546,6 +2546,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		selectSource: (source) => window.electronAPI.selectSource(source),
 		start: startRecording,
 		stop: () => stopRecording.current(),
+		pause: pauseRecording,
+		resume: resumeRecording,
+		cancel: cancelRecording,
 		cancelStart: () => {
 			recordingStartGeneration.current += 1;
 			void window.electronAPI.cancelCountdown();

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type BrowserWindow, dialog, ipcMain } from "electron";
-import type { AutomationCommand, RecordingUpdate, RendererAutomationResult } from "./protocol";
+import type { RecordingUpdate, RendererAutomationResult, RendererCommand } from "./protocol";
 import { AutomationError, isRecord } from "./protocol";
 
 export function automationApprovalIsPreauthorized(
@@ -144,7 +144,7 @@ export function createAutomationBridge(options: {
 	});
 
 	return {
-		async execute(command: Exclude<AutomationCommand, { method: "get_recording_status" }>) {
+		async execute(command: RendererCommand) {
 			if (pending.size + waiters.size >= 16)
 				throw new AutomationError("BUSY", "Too many pending recording commands.", 429);
 			options.ensureWindow();

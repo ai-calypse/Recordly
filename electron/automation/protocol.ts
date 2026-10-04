@@ -4,7 +4,17 @@ export type AutomationCommand =
 	| { method: "list_sources"; params: Record<string, never> }
 	| { method: "get_recording_status"; params: { recordingId?: string } }
 	| { method: "start_recording"; params: { requestId: string; sourceId: string } }
-	| { method: "stop_recording"; params: { recordingId: string } };
+	| { method: "stop_recording"; params: { recordingId: string } }
+	| { method: "pause_recording"; params: { recordingId: string } }
+	| { method: "resume_recording"; params: { recordingId: string } }
+	| { method: "cancel_recording"; params: { recordingId: string } }
+	| { method: "list_recordings"; params: Record<string, never> };
+
+/** Commands the recording window executes; the rest are answered by the main process. */
+export type RendererCommand = Exclude<
+	AutomationCommand,
+	{ method: "get_recording_status" | "list_recordings" }
+>;
 
 export type RecordingPhase =
 	| "starting"
@@ -48,7 +58,7 @@ export interface AutomationApproval {
 
 export interface RendererAutomationCommand {
 	id: string;
-	command: Exclude<AutomationCommand, { method: "get_recording_status" }>;
+	command: RendererCommand;
 }
 
 export interface RendererAutomationResult {
@@ -85,6 +95,10 @@ export function parseAutomationCommand(value: unknown): AutomationCommand {
 		get_recording_status: ["recordingId"],
 		start_recording: ["requestId", "sourceId"],
 		stop_recording: ["recordingId"],
+		pause_recording: ["recordingId"],
+		resume_recording: ["recordingId"],
+		cancel_recording: ["recordingId"],
+		list_recordings: [],
 	};
 	if (!Object.keys(allowed).includes(value.method)) {
 		throw new AutomationError("UNKNOWN_METHOD", "Unknown automation method.");
@@ -101,6 +115,7 @@ export function parseAutomationCommand(value: unknown): AutomationCommand {
 	};
 	switch (value.method) {
 		case "list_sources":
+		case "list_recordings":
 			return { method: value.method, params: {} };
 		case "get_recording_status":
 			return {
@@ -124,7 +139,14 @@ export function parseAutomationCommand(value: unknown): AutomationCommand {
 			};
 		}
 		default:
-			return { method: "stop_recording", params: { recordingId: id("recordingId") } };
+			return {
+				method: value.method as
+					| "stop_recording"
+					| "pause_recording"
+					| "resume_recording"
+					| "cancel_recording",
+				params: { recordingId: id("recordingId") },
+			};
 	}
 }
 

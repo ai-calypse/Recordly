@@ -14,6 +14,9 @@ export interface RecordingAutomationDriver {
 	selectSource(source: ProcessedDesktopSource): Promise<unknown>;
 	start(): Promise<void>;
 	stop(): void;
+	pause(): void;
+	resume(): void;
+	cancel(): void;
 	cancelStart(): void;
 	report(update: RecordingUpdate): Promise<void>;
 	reply(result: RendererAutomationResult): void;
@@ -80,6 +83,20 @@ export function createRecordingAutomation(
 						}),
 					);
 					driver.reply({ id, result: { sources, settings: driver.settings() } });
+					return;
+				}
+				if (
+					command.method === "pause_recording" ||
+					command.method === "resume_recording" ||
+					command.method === "cancel_recording"
+				) {
+					if (recordingId !== command.params.recordingId || phase !== "recording") {
+						throw new Error("This recording is not active in the recording window.");
+					}
+					if (command.method === "pause_recording") driver.pause();
+					else if (command.method === "resume_recording") driver.resume();
+					else driver.cancel();
+					driver.reply({ id, result: {} });
 					return;
 				}
 				if (command.method === "stop_recording") {

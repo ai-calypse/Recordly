@@ -1,8 +1,10 @@
 import path from "node:path";
 import { app } from "electron";
+import { RECORDINGS_DIR } from "../appPaths";
 import { createHudOverlayWindow, getHudOverlayWindow } from "../windows";
 import { createAutomationBridge } from "./bridge";
 import { RecordingController } from "./controller";
+import { listRecordings } from "./recordings";
 import { startAutomationServer } from "./server";
 
 export async function startRecordingAutomation() {
@@ -28,7 +30,10 @@ export async function startRecordingAutomation() {
 	try {
 		const server = await startAutomationServer({
 			connectionFile,
-			dispatch: (command) => controller.call(command),
+			dispatch: (command) =>
+				command.method === "list_recordings"
+					? listRecordings(RECORDINGS_DIR)
+					: controller.call(command),
 		});
 		console.info(`Recordly automation connection file: ${connectionFile}`);
 		app.once("will-quit", () => {

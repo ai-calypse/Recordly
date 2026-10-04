@@ -1,5 +1,6 @@
 import {
 	type AutomationCommand,
+	type RendererCommand,
 	AutomationError,
 	type AutomationRecording,
 	isTerminalPhase,
@@ -10,13 +11,11 @@ export class RecordingController {
 	private readonly recordings = new Map<string, AutomationRecording>();
 	private latestId: string | undefined;
 
-	constructor(
-		private readonly execute: (
-			command: Exclude<AutomationCommand, { method: "get_recording_status" }>,
-		) => Promise<unknown>,
-	) {}
+	constructor(private readonly execute: (command: RendererCommand) => Promise<unknown>) {}
 
-	async call(command: AutomationCommand): Promise<unknown> {
+	async call(
+		command: Exclude<AutomationCommand, { method: "list_recordings" }>,
+	): Promise<unknown> {
 		if (command.method === "list_sources") return this.execute(command);
 		if (command.method === "get_recording_status") {
 			const id = command.params.recordingId ?? this.latestId;
@@ -64,6 +63,13 @@ export class RecordingController {
 			return { ...recording };
 		}
 		const recording = this.get(command.params.recordingId);
+		if (command.method !== "stop_recording") {
+			if (recording.phase !== "recording") {
+				throw new AutomationError("NOT_READY", "Recording is not active.", 409);
+			}
+			await this.execute(command);
+			return { ...this.get(recording.recordingId) };
+		}
 		if (isTerminalPhase(recording.phase) || recording.phase === "finalizing") {
 			return { ...recording };
 		}

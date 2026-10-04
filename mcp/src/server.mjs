@@ -43,7 +43,68 @@ const tools = [
 		inputSchema: z.object({ recordingId }).strict(),
 		readOnly: false,
 	},
+	{
+		name: "pause_recording",
+		description:
+			"Pause the active automation recording. Poll get_recording_status for paused: true. Only valid while phase is recording.",
+		inputSchema: z.object({ recordingId }).strict(),
+		readOnly: false,
+	},
+	{
+		name: "resume_recording",
+		description:
+			"Resume a paused automation recording. Poll get_recording_status for paused: false.",
+		inputSchema: z.object({ recordingId }).strict(),
+		readOnly: false,
+	},
+	{
+		name: "cancel_recording",
+		description:
+			"Discard the active automation recording without saving it. The recording ends as cancelled and cannot be recovered. Use stop_recording to keep the footage.",
+		inputSchema: z.object({ recordingId }).strict(),
+		readOnly: false,
+		destructive: true,
+	},
+	{
+		name: "list_recordings",
+		description:
+			"List the newest 50 media files in Recordly's recordings folder (path, size, modified time). Works with or without an automation recording, so agents can find earlier footage.",
+		inputSchema: z.object({}).strict(),
+		readOnly: true,
+	},
+	{
+		name: "wait_for_recording",
+		description:
+			"Block until a recording reaches a state instead of polling. until=recording (default) returns once it is recording or has ended, so call it after start_recording and the user's approval. until=done returns once it is completed, failed or cancelled, so call it after stop_recording. Returns the status plus timedOut; on timeout call it again.",
+		inputSchema: z
+			.object({
+				recordingId: recordingId.optional(),
+				until: z.enum(["recording", "done"]).default("recording"),
+				timeoutSeconds: z.number().int().min(1).max(180).default(60),
+			})
+			.strict(),
+		readOnly: true,
+		run: waitForRecording,
+	},
 ];
+
+const TERMINAL = ["completed", "failed", "cancelled"];
+
+async function waitForRecording({ recordingId, until, timeoutSeconds }, call, signal) {
+	const targets = until === "done" ? TERMINAL : ["recording", ...TERMINAL];
+	const deadline = Date.now() + timeoutSeconds * 1000;
+	for (;;) {
+		signal?.throwIfAborted();
+		const status = await call(
+			"get_recording_status",
+			recordingId ? { recordingId } : {},
+			signal,
+		);
+		const reached = targets.includes(status.phase);
+		if (reached || Date.now() >= deadline) return { ...status, timedOut: !reached };
+		await new Promise((resolve) => setTimeout(resolve, 500));
+	}
+}
 
 export function createMcpServer(callRecordly) {
 	const server = new McpServer({ name: "recordly", version: "0.1.0" });
@@ -55,14 +116,16 @@ export function createMcpServer(callRecordly) {
 				inputSchema: tool.inputSchema,
 				annotations: {
 					readOnlyHint: tool.readOnly,
-					destructiveHint: false,
-					idempotentHint: true,
+					destructiveHint: tool.destructive ?? false,
+					idempotentHint: tool.readOnly,
 					openWorldHint: false,
 				},
 			},
 			async (params, context) => {
 				try {
-					const result = await callRecordly(tool.name, params, context.signal);
+					const result = tool.run
+						? await tool.run(params, callRecordly, context.signal)
+						: await callRecordly(tool.name, params, context.signal);
 					return {
 						content: [{ type: "text", text: JSON.stringify(result) }],
 						structuredContent: result,
