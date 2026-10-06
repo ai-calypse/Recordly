@@ -10,6 +10,7 @@ import {
 } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
 import {
+	getHudOverlayResizeAnchor,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
@@ -348,6 +349,14 @@ ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 	setHudOverlayMousePassthrough(Boolean(ignore));
 });
 
+// Linux has no hover-driven passthrough, so the compact HUD window only grows
+// while a menu is open; growing on hover moves the bar out from under the pointer.
+ipcMain.on("hud-overlay-set-menu-open", (_event, open: boolean) => {
+	if (process.platform === "linux") {
+		setHudOverlayFallbackExpanded(Boolean(open));
+	}
+});
+
 ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) => {
 	hudOverlaySourceSelectionActive = Boolean(active);
 	if (hudOverlaySourceSelectionActive) {
@@ -435,6 +444,7 @@ ipcMain.handle("get-hud-overlay-mouse-passthrough-supported", () => {
 	return {
 		success: true,
 		supported: isHudOverlayMousePassthroughSupported(),
+		resizeAnchor: getHudOverlayResizeAnchor(process.platform, process.env),
 	};
 });
 

@@ -46,7 +46,10 @@
 		"test:watch": "vitest",
 		"typecheck": "tsc --noEmit",
 		"test:ui": "playwright test",
-		"dev:ui": "vite --mode ui --host 127.0.0.1"
+		"dev:ui": "vite --mode ui --host 127.0.0.1",
+		"mcp": "node mcp/src/cli.mjs",
+		"test:mcp": "npm --prefix mcp test",
+		"smoke:mcp": "node mcp/test/electron-smoke.mjs"
 	},
 	"dependencies": {
 		"@phosphor-icons/react": "^2.1.10",

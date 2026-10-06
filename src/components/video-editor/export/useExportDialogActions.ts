@@ -17,7 +17,7 @@ type UseExportDialogActionsInput = {
 	session: ExportSession;
 	handleExport: (
 		settings: ExportSettings,
-		options?: { destination?: "download" | "share" },
+		options?: { destination?: "download" | "share"; outputPath?: string },
 	) => Promise<string | undefined>;
 	showExportSuccessToast: (filePath: string) => void;
 };
@@ -182,6 +182,7 @@ export function useExportDialogActions({
 		prepareExportForShare,
 		handleCancelExport,
 		handleExportDropdownClose,
+		resolveCurrentSettings,
 		handleRetrySaveExport,
 		revealExportedFile,
 	};

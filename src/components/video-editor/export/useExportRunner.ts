@@ -28,7 +28,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 	const handleExport = useCallback(
 		async (
 			settings: ExportSettings,
-			options?: { destination?: "download" | "share" },
+			options?: { destination?: "download" | "share"; outputPath?: string },
 		): Promise<string | undefined> => {
 			const {
 				videoPath,
@@ -178,7 +178,8 @@ export function useExportRunner(input: ExportRunnerInput) {
 						const { saveResult, pendingSave } = await saveExportBlob(
 							result.blob,
 							fileName,
-							smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
+							options?.outputPath ??
+								(smokeExportConfig.enabled ? smokeExportConfig.outputPath : null),
 						);
 						if (exportWasCancelled()) {
 							await discardCancelledTemp(pendingSave);
@@ -201,6 +202,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 							}
 							showExportSuccessToast(saveResult.path);
 							setExportedFilePath(saveResult.path);
+							if (options?.outputPath) return saveResult.path;
 							if (smokeExportConfig.enabled) {
 								window.close();
 								return;
@@ -380,9 +382,10 @@ export function useExportRunner(input: ExportRunnerInput) {
 								tempPath: result.tempFilePath,
 								fileName,
 								outputPath:
-									smokeExportConfig.enabled && smokeExportConfig.outputPath
+									options?.outputPath ??
+									(smokeExportConfig.enabled && smokeExportConfig.outputPath
 										? smokeExportConfig.outputPath
-										: null,
+										: null),
 								captionSidecar: sidecarForThisExport,
 							});
 							if (exportWasCancelled()) {
@@ -405,7 +408,10 @@ export function useExportRunner(input: ExportRunnerInput) {
 							const blobSave = await saveExportBlob(
 								result.blob,
 								fileName,
-								smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
+								options?.outputPath ??
+									(smokeExportConfig.enabled
+										? smokeExportConfig.outputPath
+										: null),
 								sidecarForThisExport,
 							);
 							if (exportWasCancelled()) {
@@ -465,6 +471,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 							}
 							showExportSuccessToast(saveResult.path);
 							setExportedFilePath(saveResult.path);
+							if (options?.outputPath) return saveResult.path;
 							if (smokeExportConfig.enabled) {
 								window.close();
 								return;

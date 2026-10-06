@@ -218,7 +218,24 @@ interface RendererExportHardwareInfo {
 
 interface Window {
 	electronAPI: {
+		onAutomationCommand: (
+			callback: (command: import("./automation/protocol").RendererAutomationCommand) => void,
+		) => () => void;
+		onAutomationCancel: (callback: (id: string) => void) => () => void;
+		replyAutomationCommand: (
+			result: import("./automation/protocol").RendererAutomationResult,
+		) => void;
+		requestAutomationApproval: (
+			id: string,
+			details: import("./automation/protocol").AutomationApproval,
+		) => Promise<boolean>;
+		reportAutomationRecording: (
+			update: import("./automation/protocol").RecordingUpdate,
+		) => Promise<void>;
+		claimAutomationExport: () => Promise<import("./automation/protocol").ExportClaim | null>;
+		reportAutomationExport: (update: import("./automation/protocol").ExportUpdate) => void;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
+		hudOverlaySetMenuOpen: (open: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
@@ -231,12 +248,15 @@ interface Window {
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
 			supported: boolean;
+			resizeAnchor?: "bottom" | "center";
 		}>;
 		setHudOverlayCaptureProtection: (
 			enabled: boolean,
 		) => Promise<{ success: boolean; enabled: boolean }>;
 		getAssetBasePath: () => Promise<string | null>;
-		getSources: (opts: Electron.SourcesOptions) => Promise<ProcessedDesktopSource[]>;
+		getSources: (
+			opts: Electron.SourcesOptions & { allowPortalPrompt?: boolean },
+		) => Promise<ProcessedDesktopSource[]>;
 		showProjectDashboard: () => Promise<void>;
 		switchToEditor: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;

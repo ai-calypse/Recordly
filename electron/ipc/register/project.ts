@@ -219,6 +219,44 @@ async function ensureNamedProjectSaveDoesNotOverwriteDifferentProject(
 	}
 }
 
+type RecordingSessionInput = {
+	videoPath: string;
+	webcamPath?: string | null;
+	timeOffsetMs?: number;
+	hideOverlayCursorByDefault?: boolean;
+};
+
+/** Makes a recording the current editor source. `broadcast: false` leaves already-open editors alone. */
+export async function applyRecordingSession(
+	session: RecordingSessionInput,
+	options?: { preserveProjectPath?: boolean; broadcast?: boolean },
+) {
+	const normalizedVideoPath = normalizeVideoSourcePath(session.videoPath) ?? session.videoPath;
+	setCurrentVideoPath(normalizedVideoPath);
+	setCurrentRecordingSession({
+		videoPath: normalizedVideoPath,
+		webcamPath: normalizeVideoSourcePath(session.webcamPath ?? null),
+		timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
+		hideOverlayCursorByDefault: normalizeBoolean(session.hideOverlayCursorByDefault),
+	});
+	await rememberApprovedLocalReadPath(currentRecordingSession!.videoPath);
+	await rememberApprovedLocalReadPath(currentRecordingSession!.webcamPath);
+	if (!options?.preserveProjectPath) {
+		setCurrentProjectPath(null);
+	}
+	await persistRecordingSessionManifest(currentRecordingSession!);
+
+	if (options?.broadcast !== false) {
+		for (const window of BrowserWindow.getAllWindows()) {
+			if (!window.isDestroyed()) {
+				window.webContents.send("recording-session-changed", currentRecordingSession);
+			}
+		}
+	}
+
+	return { success: true };
+}
+
 export function registerProjectHandlers() {
 	ipcMain.handle("rename-library-project", async (_, source: string, name: string) => {
 		try {
@@ -852,40 +890,8 @@ export function registerProjectHandlers() {
 
 	ipcMain.handle(
 		"set-current-recording-session",
-		async (
-			_,
-			session: {
-				videoPath: string;
-				webcamPath?: string | null;
-				timeOffsetMs?: number;
-				hideOverlayCursorByDefault?: boolean;
-			},
-			options?: { preserveProjectPath?: boolean },
-		) => {
-			const normalizedVideoPath =
-				normalizeVideoSourcePath(session.videoPath) ?? session.videoPath;
-			setCurrentVideoPath(normalizedVideoPath);
-			setCurrentRecordingSession({
-				videoPath: normalizedVideoPath,
-				webcamPath: normalizeVideoSourcePath(session.webcamPath ?? null),
-				timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
-				hideOverlayCursorByDefault: normalizeBoolean(session.hideOverlayCursorByDefault),
-			});
-			await rememberApprovedLocalReadPath(currentRecordingSession!.videoPath);
-			await rememberApprovedLocalReadPath(currentRecordingSession!.webcamPath);
-			if (!options?.preserveProjectPath) {
-				setCurrentProjectPath(null);
-			}
-			await persistRecordingSessionManifest(currentRecordingSession!);
-
-			for (const window of BrowserWindow.getAllWindows()) {
-				if (!window.isDestroyed()) {
-					window.webContents.send("recording-session-changed", currentRecordingSession);
-				}
-			}
-
-			return { success: true };
-		},
+		(_, session: RecordingSessionInput, options?: { preserveProjectPath?: boolean }) =>
+			applyRecordingSession(session, options),
 	);
 
 	ipcMain.handle("get-current-recording-session", () => {

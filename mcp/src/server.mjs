@@ -1,0 +1,204 @@
+import { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
+import { DESKTOP_INSTRUCTIONS, desktopTools } from "./desktop.mjs";
+
+const recordingId = z.string().regex(/^[a-zA-Z0-9_-]{8,128}$/);
+const exportId = z.string().regex(/^[a-zA-Z0-9_-]{8,128}$/);
+const mediaPath = z
+	.string()
+	.min(1)
+	.max(4096)
+	.describe(
+		"Absolute path of a file in Recordly's recordings folder, from list_recordings or a completed recording's videoPath.",
+	);
+const tools = [
+	{
+		name: "list_sources",
+		description:
+			"List Recordly screen and window capture sources. On Wayland the portal source requires the user to choose a surface in the system picker.",
+		inputSchema: z.object({}).strict(),
+		readOnly: true,
+	},
+	{
+		name: "start_recording",
+		description:
+			"Request a Recordly recording of a source from list_sources. Uses the microphone, system audio, webcam and countdown settings currently configured in Recordly. The desktop app asks the user to approve capture. Returns starting immediately; poll get_recording_status until recording before performing the demo. Supply a unique requestId and reuse it on retries; it becomes the recordingId. The most recent 100 recording IDs are retained until Recordly exits.",
+		inputSchema: z
+			.object({
+				requestId: recordingId.describe(
+					"Unique request ID (for example a UUID); reuse exactly this ID for retries.",
+				),
+				sourceId: z
+					.string()
+					.min(1)
+					.max(256)
+					.regex(/^(screen|window):/)
+					.describe("Source ID returned by list_sources."),
+			})
+			.strict(),
+		readOnly: false,
+	},
+	{
+		name: "get_recording_status",
+		description:
+			"Read an automation recording's phase: starting, recording, finalizing, completed, cancelled or failed. Without an ID returns the latest automation recording, or idle. A completed result includes the raw videoPath and optional webcamPath; polished editor export is separate. The paused flag reflects the user's pause control.",
+		inputSchema: z.object({ recordingId: recordingId.optional() }).strict(),
+		readOnly: true,
+	},
+	{
+		name: "stop_recording",
+		description:
+			"Stop and save the specified automation recording. Returns finalizing; poll get_recording_status until completed or failed. Retrying the same recordingId never starts a new recording. Cannot stop a manually started recording or a recording still awaiting approval.",
+		inputSchema: z.object({ recordingId }).strict(),
+		readOnly: false,
+	},
+	{
+		name: "pause_recording",
+		description:
+			"Pause the active automation recording. Poll get_recording_status for paused: true. Only valid while phase is recording.",
+		inputSchema: z.object({ recordingId }).strict(),
+		readOnly: false,
+	},
+	{
+		name: "resume_recording",
+		description:
+			"Resume a paused automation recording. Poll get_recording_status for paused: false.",
+		inputSchema: z.object({ recordingId }).strict(),
+		readOnly: false,
+	},
+	{
+		name: "cancel_recording",
+		description:
+			"Discard the active automation recording without saving it. The recording ends as cancelled and cannot be recovered. Use stop_recording to keep the footage.",
+		inputSchema: z.object({ recordingId }).strict(),
+		readOnly: false,
+		destructive: true,
+	},
+	{
+		name: "list_recordings",
+		description:
+			"List the newest 50 media files in Recordly's recordings folder (path, size, modified time). Works with or without an automation recording, so agents can find earlier footage.",
+		inputSchema: z.object({}).strict(),
+		readOnly: true,
+	},
+	{
+		name: "wait_for_recording",
+		description:
+			"Block until a recording reaches a state instead of polling. until=recording (default) returns once it is recording or has ended, so call it after start_recording and the user's approval. until=done returns once it is completed, failed or cancelled, so call it after stop_recording. Returns the status plus timedOut; on timeout call it again.",
+		inputSchema: z
+			.object({
+				recordingId: recordingId.optional(),
+				until: z.enum(["recording", "done"]).default("recording"),
+				timeoutSeconds: z.number().int().min(1).max(55).default(30),
+			})
+			.strict(),
+		readOnly: true,
+		run: waitForRecording,
+	},
+	{
+		name: "open_in_editor",
+		description:
+			"Open a recording in a new Recordly editor window so the user can polish it. Does not touch editors already open. The file must be in Recordly's recordings folder.",
+		inputSchema: z.object({ videoPath: mediaPath, webcamPath: mediaPath.optional() }).strict(),
+		readOnly: false,
+	},
+	{
+		name: "export_recording",
+		description:
+			"Export a recording to a polished MP4 or GIF with the user's current editor look (wallpaper, zoom, cursor effects), saved in the recordings folder. Runs in a background editor window and returns an exportId immediately; call wait_for_export. One export at a time. quality applies to mp4 only (medium, good, high, source; default is the user's editor setting). Unlike the raw capture, this renders effects, so it can take a while.",
+		inputSchema: z
+			.object({
+				videoPath: mediaPath,
+				webcamPath: mediaPath.optional(),
+				format: z.enum(["mp4", "gif"]),
+				quality: z.enum(["medium", "good", "high", "source"]).optional(),
+			})
+			.strict(),
+		readOnly: false,
+	},
+	{
+		name: "get_export_status",
+		description:
+			"Read an export's phase (starting, exporting, completed, failed), progress 0-100, and on completion outputPath. Without an ID returns the latest export, or idle.",
+		inputSchema: z.object({ exportId: exportId.optional() }).strict(),
+		readOnly: true,
+	},
+	{
+		name: "wait_for_export",
+		description:
+			"Block until an export completes or fails instead of polling get_export_status. Returns the status plus timedOut; on timeout call it again.",
+		inputSchema: z
+			.object({
+				exportId: exportId.optional(),
+				timeoutSeconds: z.number().int().min(1).max(55).default(30),
+			})
+			.strict(),
+		readOnly: true,
+		run: (params, call, signal) =>
+			pollUntil("get_export_status", params, ["completed", "failed"], call, signal),
+	},
+];
+
+const TERMINAL = ["completed", "failed", "cancelled"];
+
+function waitForRecording({ until, ...params }, call, signal) {
+	const targets = until === "done" ? TERMINAL : ["recording", ...TERMINAL];
+	return pollUntil("get_recording_status", params, targets, call, signal);
+}
+
+/** Polls `method` until its phase is in `targets` or timeoutSeconds passes. */
+async function pollUntil(method, { timeoutSeconds, ...params }, targets, call, signal) {
+	const deadline = Date.now() + timeoutSeconds * 1000;
+	for (;;) {
+		signal?.throwIfAborted();
+		const status = await call(method, params, signal);
+		const reached = targets.includes(status.phase);
+		if (reached || Date.now() >= deadline) return { ...status, timedOut: !reached };
+		await new Promise((resolve) => setTimeout(resolve, 500));
+	}
+}
+
+export function createMcpServer(callRecordly, { desktopControl = false } = {}) {
+	const server = new McpServer(
+		{ name: "recordly", version: "0.1.0" },
+		desktopControl ? { instructions: DESKTOP_INSTRUCTIONS } : undefined,
+	);
+	for (const tool of desktopControl ? [...tools, ...desktopTools] : tools) {
+		server.registerTool(
+			tool.name,
+			{
+				description: tool.description,
+				inputSchema: tool.inputSchema,
+				annotations: {
+					readOnlyHint: tool.readOnly,
+					destructiveHint: tool.destructive ?? false,
+					idempotentHint: tool.readOnly,
+					openWorldHint: tool.openWorld ?? false,
+				},
+			},
+			async (params, context) => {
+				try {
+					const result = tool.run
+						? await tool.run(params, callRecordly, context.signal)
+						: await callRecordly(tool.name, params, context.signal);
+					if (result?.mcpContent) return { content: result.mcpContent };
+					return {
+						content: [{ type: "text", text: JSON.stringify(result) }],
+						structuredContent: result,
+					};
+				} catch (error) {
+					return {
+						isError: true,
+						content: [
+							{
+								type: "text",
+								text: error instanceof Error ? error.message : String(error),
+							},
+						],
+					};
+				}
+			},
+		);
+	}
+	return server;
+}

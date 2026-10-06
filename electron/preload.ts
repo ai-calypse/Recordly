@@ -1,4 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+	AutomationApproval,
+	ExportClaim,
+	ExportUpdate,
+	RecordingUpdate,
+	RendererAutomationCommand,
+	RendererAutomationResult,
+} from "./automation/protocol";
 import type { RecordingSessionData } from "./ipc/types";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
@@ -184,8 +192,34 @@ function settleNativeVideoExportPendingRequests(
 }
 
 contextBridge.exposeInMainWorld("electronAPI", {
+	onAutomationCommand: (callback: (command: RendererAutomationCommand) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, command: RendererAutomationCommand) =>
+			callback(command);
+		ipcRenderer.on("automation:command", listener);
+		ipcRenderer.send("automation:ready");
+		return () => ipcRenderer.removeListener("automation:command", listener);
+	},
+	onAutomationCancel: (callback: (id: string) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, id: string) => callback(id);
+		ipcRenderer.on("automation:cancel", listener);
+		return () => ipcRenderer.removeListener("automation:cancel", listener);
+	},
+	replyAutomationCommand: (result: RendererAutomationResult) =>
+		ipcRenderer.send("automation:result", result),
+	requestAutomationApproval: (id: string, details: AutomationApproval): Promise<boolean> =>
+		ipcRenderer.invoke("automation:approve", id, details),
+	reportAutomationRecording: (update: RecordingUpdate): Promise<void> =>
+		ipcRenderer.invoke("automation:update", update),
+	// Resolves null when automation is off (no handler registered) or this window has no export job.
+	claimAutomationExport: (): Promise<ExportClaim | null> =>
+		ipcRenderer.invoke("automation:export-claim").catch(() => null),
+	reportAutomationExport: (update: ExportUpdate) =>
+		ipcRenderer.send("automation:export-update", update),
 	hudOverlaySetIgnoreMouse: (ignore: boolean) => {
 		ipcRenderer.send("hud-overlay-set-ignore-mouse", ignore);
+	},
+	hudOverlaySetMenuOpen: (open: boolean) => {
+		ipcRenderer.send("hud-overlay-set-menu-open", open);
 	},
 	hudOverlaySetSourceSelectionActive: (active: boolean) => {
 		ipcRenderer.send("hud-overlay-set-source-selection-active", active);
@@ -510,7 +544,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getVideoAudioFallbackPaths: (videoPath: string) => {
 		return ipcRenderer.invoke("get-video-audio-fallback-paths", videoPath);
 	},
-	getSources: async (opts: Electron.SourcesOptions) => {
+	getSources: async (opts: Electron.SourcesOptions & { allowPortalPrompt?: boolean }) => {
 		return await ipcRenderer.invoke("get-sources", opts);
 	},
 	showRecordingHud: () => ipcRenderer.invoke("show-recording-hud"),

@@ -13,6 +13,7 @@ import { useExportRunner } from "./useExportRunner";
 import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
 import { useExportStatusViewModel } from "./useExportStatusViewModel";
+import { useAutomationExport } from "./useAutomationExport";
 import { useSmokeExportAutomation } from "./useSmokeExportAutomation";
 
 type Input = {
@@ -83,6 +84,17 @@ export function useEditorExportController(input: Input) {
 		loading: input.loading,
 		videoPath: input.videoPath,
 		videoSourcePath: input.videoSourcePath,
+		handleExport: runner.handleExport,
+	});
+	useAutomationExport({
+		ready:
+			Boolean(input.videoPath) &&
+			!input.loading &&
+			input.isPreviewReady &&
+			input.duration > 0,
+		loadError: input.error,
+		session: input.session,
+		resolveSettings: dialogActions.resolveCurrentSettings,
 		handleExport: runner.handleExport,
 	});
 	const status = useExportStatusViewModel({
